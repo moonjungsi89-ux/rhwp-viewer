@@ -250,9 +250,10 @@ bootstrap().catch((err) => {
 // prompt() 대체 — 비차단, 모바일 키보드 친화적, 접근성 기준 충족
 
 function showPageJumpSheet(total: number, onGo: (page: number) => void): void {
-  // total은 WASM pageCount()에서 오는 정수이지만, innerHTML에 직접 보간하지 않고
-  // DOM API로 속성/텍스트를 설정해 모든 XSS 경로를 원천 차단한다.
-  const safeTotal = Math.max(0, Math.floor(total)); // 방어적 정수화
+  // 중복 호출 방지 — Samsung Internet 등에서 이벤트 버블링으로 재호출될 수 있음
+  if (document.querySelector('.page-jump-backdrop')) return;
+
+  const safeTotal = Math.max(0, Math.floor(total));
 
   const backdrop = document.createElement('div');
   backdrop.className = 'page-jump-backdrop';
@@ -297,7 +298,11 @@ function showPageJumpSheet(total: number, onGo: (page: number) => void): void {
   sheet.appendChild(actions);
   backdrop.appendChild(sheet);
 
-  const close = () => backdrop.remove();
+  const close = () => {
+    backdrop.style.opacity = '0';
+    backdrop.style.pointerEvents = 'none';
+    setTimeout(() => backdrop.remove(), 150);
+  };
 
   const commit = () => {
     const n = parseInt(input.value, 10);
@@ -312,8 +317,10 @@ function showPageJumpSheet(total: number, onGo: (page: number) => void): void {
 
   goBtn.addEventListener('click', commit);
   cancelBtn.addEventListener('click', close);
+  // sheet 내부 탭이 backdrop click으로 버블링되지 않도록 차단
+  sheet.addEventListener('click', (e) => e.stopPropagation());
   // backdrop 바깥 탭 → 닫기
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  backdrop.addEventListener('click', close);
   // Enter 키 → 이동
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') commit();
@@ -321,7 +328,6 @@ function showPageJumpSheet(total: number, onGo: (page: number) => void): void {
   });
 
   document.body.appendChild(backdrop);
-  // 다음 프레임에 포커스 — 키보드 자동 표시
   requestAnimationFrame(() => input.focus());
 }
 
