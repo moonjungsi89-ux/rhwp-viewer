@@ -1,0 +1,67 @@
+# GitHub Pages 자동 배포
+# main 브랜치 push 시 빌드 → gh-pages 배포
+#
+# 사전 설정 (레포 Settings → Pages):
+#   Source: GitHub Actions
+#
+# 배포 URL: https://<username>.github.io/<repo-name>/
+# VITE_BASE는 레포 이름과 일치하도록 수정 (e.g. /rhwp-viewer/)
+# 커스텀 도메인 사용 시 VITE_BASE 제거하고 base: '/' 유지
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # 수동 실행 허용
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시 배포 방지 — 진행 중인 배포는 취소하고 최신 커밋으로 재배포
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  # ── 빌드 ─────────────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # 레포 이름이 다르면 여기를 수정 (e.g. VITE_BASE: /my-viewer/)
+          # 커스텀 도메인 또는 Vercel/Netlify 배포 시 이 줄 제거
+          VITE_BASE: /rhwp-viewer/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  # ── 배포 ─────────────────────────────────────────────────
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

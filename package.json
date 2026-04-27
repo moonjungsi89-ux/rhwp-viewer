@@ -1,0 +1,19 @@
+{
+  "name": "rhwp-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "postinstall": "node -e \"const fs=require('fs');fs.copyFileSync('node_modules/@rhwp/core/rhwp_bg.wasm','public/rhwp_bg.wasm');\""
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0"
+  },
+  "dependencies": {
+    "@rhwp/core": "0.7.3"
+  }
+}
