@@ -542,69 +542,124 @@ html, body {
   bottom: 0;
   left: 0;
   right: 0;
-  /* iOS 홈 인디케이터 대응: safe-area 만큼 높이 확장 */
   height: calc(var(--nav-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding-left: 8px;
-  padding-right: 8px;
-  background: var(--color-surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-top: 1px solid var(--color-border);
-  z-index: 10;
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-
-.page-nav.hidden {
-  opacity: 0;
-  transform: translateY(100%);
-  pointer-events: none;
-}
-
-.nav-btn {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  background: none;
-  border: none;
-  border-radius: 50%;
-  color: var(--color-text);
-  cursor: pointer;
-  transition: background 0.12s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.nav-btn:hover:not(:disabled) { background: var(--color-bg-tertiary); }
-
-.nav-btn:disabled {
-  color: var(--color-border);
-  cursor: default;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .page-info {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-secondary);
-  min-width: 72px;
-  /* WCAG 2.5.5: 터치 타겟 확보 — 세로 패딩 포함 44px 이상 */
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 8px;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: background 0.12s;
-  -webkit-tap-highlight-color: transparent;
+  color: var(--color-text-hint);
+  background: var(--color-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--color-border);
 }
 
-.page-info:hover {
-  background: var(--color-bg-tertiary);
+/* ── 탭 존 미니 메뉴 ── */
+.tap-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 200;
+  animation: fade-in 0.15s ease;
+}
+
+.tap-menu-btn {
+  width: 100%;
+  max-width: 280px;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 500;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s;
+}
+
+.tap-menu-btn:active { background: var(--color-bg-secondary); }
+
+.tap-menu-btn--close {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+/* ── 탭 힌트 오버레이 ── */
+.tap-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 210;
+  animation: fade-in 0.2s ease;
+}
+
+.tap-hint-zones {
+  display: flex;
+  width: 100%;
+  max-width: 360px;
+  padding: 0 16px;
+  gap: 0;
+}
+
+.tap-hint-zone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 20px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.tap-hint-zone--center {
+  border-left: none;
+  border-right: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tap-hint-arrow {
+  font-size: 22px;
+}
+
+.tap-hint-icon {
+  font-size: 22px;
+}
+
+.tap-hint-dismiss {
+  padding: 12px 36px;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 /* ════════════════════════════════════════

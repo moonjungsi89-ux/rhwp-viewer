@@ -19,8 +19,20 @@ export class FileHandler {
   // ── 1. input[type=file] ───────────────────────────────────────────
   // 지원: 전 브라우저, 전 플랫폼
 
-  /** 파일 선택 다이얼로그 열기. */
+  /** 파일 선택 다이얼로그 열기.
+   * showOpenFilePicker (Chrome 86+, Android "내 파일" 직접 열림) 우선,
+   * 미지원 브라우저(Samsung Internet, Firefox, Safari)는 input.click() 폴백. */
   openFilePicker(): void {
+    if ('showOpenFilePicker' in window) {
+      (window as Window & { showOpenFilePicker: Function }).showOpenFilePicker({
+        types: [{ description: 'HWP 문서', accept: { 'application/octet-stream': ['.hwp', '.hwpx'] } }],
+        multiple: false,
+      })
+        .then((handles: FileSystemFileHandle[]) => handles[0].getFile())
+        .then((file: File) => this.processFile(file))
+        .catch(() => { /* 사용자 취소 */ });
+      return;
+    }
     this.fileInput.click();
   }
 

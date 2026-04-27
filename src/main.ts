@@ -20,7 +20,6 @@ const viewer = new RhwpViewer(
   getEl('viewer-container'),
   (current, total) => {
     ui.updatePageInfo(current, total);
-    ui.updateNavButtons(current, total);
   }
 );
 
@@ -38,6 +37,7 @@ const fileHandler = new FileHandler(
       await viewer.loadFile(buffer);
       ui.showLoading('페이지를 그리는 중...', 80);
       ui.showViewer(file.name);
+      maybeShowTapHint();
       // 초기 로드는 로딩 오버레이가 덮고 있으므로 애니메이션 불필요
       await viewer.renderPage(0, false);
       void storage.addRecentFile({ name: file.name, size: file.size });
@@ -79,14 +79,46 @@ getEl('back-btn').addEventListener('click', (e) => {
   ui.showHome();
 });
 
-getEl('prev-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  viewer.prevPage();
+// ── 탭 존 미니 메뉴 ──────────────────────────────────
+const tapMenu = getEl('tap-menu');
+
+function showTapMenu(): void {
+  tapMenu.hidden = false;
+}
+
+function hideTapMenu(): void {
+  tapMenu.hidden = true;
+}
+
+getEl('tap-menu-new-file').addEventListener('click', () => {
+  hideTapMenu();
+  ui.showHome();
 });
 
-getEl('next-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  viewer.nextPage();
+getEl('tap-menu-page-jump').addEventListener('click', () => {
+  hideTapMenu();
+  const total = viewer.getPageCount();
+  if (total > 0) showPageJumpSheet(total, (page) => viewer.goToPage(page - 1));
+});
+
+getEl('tap-menu-close').addEventListener('click', hideTapMenu);
+
+// 메뉴 외부 탭 → 닫기
+tapMenu.addEventListener('click', (e) => {
+  if (e.target === tapMenu) hideTapMenu();
+});
+
+// ── 탭 존 힌트 ───────────────────────────────────────
+const TAP_HINT_KEY = 'rhwp-tap-hint-shown';
+
+function maybeShowTapHint(): void {
+  if (localStorage.getItem(TAP_HINT_KEY)) return;
+  getEl('tap-hint').hidden = false;
+}
+
+getEl('tap-hint-dismiss').addEventListener('click', () => {
+  getEl('tap-hint').hidden = true;
+  localStorage.setItem(TAP_HINT_KEY, '1');
 });
 
 // ── 터치 제스처 (모바일) ──────────────────────────────
@@ -97,7 +129,7 @@ const DOUBLE_TAP_ZOOM = 2.5;
 const touch = new TouchHandler(viewerContainer, {
   onSwipeLeft:   () => viewer.nextPage(),
   onSwipeRight:  () => viewer.prevPage(),
-  onTap:         () => ui.toggleImmersive(),
+  onTap:         (x) => handleTapZone(x),
   onDoubleTap:   (x, y) => {
     const next = viewer.getZoom() > 1.0 ? 1.0 : DOUBLE_TAP_ZOOM;
     viewer.setZoomAnimated(next, x, y);
@@ -115,23 +147,27 @@ touch.setTransitionChecker(() => viewer.isTransitioning());
 
 touch.attach();
 
-// 데스크톱: 마우스 클릭을 탭과 동일하게 처리 (몰입 모드 토글)
-// pointerType === 'mouse' 로 터치 이벤트와 구분해 중복 실행 방지
+function handleTapZone(clientX: number): void {
+  // 탭 메뉴가 열려 있으면 닫기만
+  if (!tapMenu.hidden) { hideTapMenu(); return; }
+  const w = window.innerWidth;
+  if (clientX < w / 3) {
+    viewer.prevPage();
+  } else if (clientX > (w * 2) / 3) {
+    viewer.nextPage();
+  } else {
+    showTapMenu();
+  }
+}
+
+// 데스크톱: 마우스 클릭도 탭 존과 동일하게 처리
 viewerContainer.addEventListener('pointerup', (e) => {
   if (e.pointerType !== 'mouse') return;
-  ui.toggleImmersive();
+  handleTapZone(e.clientX);
 });
 
 viewer.setOnZoomChange(s => touch.setCurrentScale(s));
 
-// 페이지 번호 탭 → 직접 이동 — prompt() 대신 바텀시트 모달 사용
-// prompt()는 메인 스레드를 블로킹하고 모바일에서 키보드 제어가 불가
-getEl('page-info').addEventListener('click', (e) => {
-  e.stopPropagation();
-  const total = viewer.getPageCount();
-  if (total === 0) return;
-  showPageJumpSheet(total, (page) => viewer.goToPage(page - 1));
-});
 
 // 키보드 탐색 (데스크톱)
 document.addEventListener('keydown', (e) => {

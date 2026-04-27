@@ -1,7 +1,7 @@
 export type GestureCallbacks = {
   onSwipeLeft:    () => void;
   onSwipeRight:   () => void;
-  onTap:          () => void;
+  onTap:          (x: number, y: number) => void;
   onDoubleTap:    (x: number, y: number) => void;
   onPinchChange:  (scale: number, cx: number, cy: number) => void;
   onPinchEnd:     (finalScale: number, cx: number, cy: number) => void;
@@ -339,7 +339,7 @@ export class TouchHandler {
     // 이 사이에 두 번째 탭이 오면 위 더블 탭 분기에서 타이머가 취소됨
     this.tapTimer = setTimeout(() => {
       this.tapTimer = null;
-      this.callbacks.onTap();
+      this.callbacks.onTap(x, y);
     }, DOUBLE_TAP_MAX_MS);
   }
 

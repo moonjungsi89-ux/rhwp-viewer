@@ -12,8 +12,6 @@ export class UIController {
   private loadingBar     = document.getElementById('loading-bar')!;
   private offlineBanner  = document.getElementById('offline-banner')!;
 
-  private isImmersive = false;
-
   // ── 화면 전환 ───────────────────────────
 
   showHome(): void {
@@ -24,7 +22,6 @@ export class UIController {
   showViewer(filename: string): void {
     this.fileNameEl.textContent = filename;
     this.showScreen(this.viewerScreen);
-    this.showChrome();
   }
 
   /**
@@ -56,23 +53,6 @@ export class UIController {
 
     this.showScreen(this.errorScreen);
     this.hideLoading();
-  }
-
-  // ── 몰입 모드 ───────────────────────────
-
-  toggleImmersive(): void {
-    if (this.isImmersive) {
-      this.showChrome();
-    } else {
-      this.hideChrome();
-    }
-  }
-
-  showChrome(): void {
-    this.toolbar.classList.remove('hidden');
-    this.pageNav.classList.remove('hidden');
-    this.viewerScreen.classList.remove('immersive');
-    this.isImmersive = false;
   }
 
   // ── 로딩 ───────────────────────────────
@@ -107,11 +87,6 @@ export class UIController {
     this.pageInfoEl.textContent = `${current + 1} / ${total}`;
   }
 
-  updateNavButtons(current: number, total: number): void {
-    (document.getElementById('prev-btn') as HTMLButtonElement).disabled = current === 0;
-    (document.getElementById('next-btn') as HTMLButtonElement).disabled = current === total - 1;
-  }
-
   // ── 오프라인 상태 ───────────────────────
 
   showOfflineBanner(): void {
@@ -123,13 +98,6 @@ export class UIController {
   }
 
   // ── private ─────────────────────────────
-
-  private hideChrome(): void {
-    this.toolbar.classList.add('hidden');
-    this.pageNav.classList.add('hidden');
-    this.viewerScreen.classList.add('immersive');
-    this.isImmersive = true;
-  }
 
   private showScreen(target: HTMLElement): void {
     this.homeScreen.hidden   = true;
