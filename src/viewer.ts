@@ -2,6 +2,7 @@ import type { HwpViewer as HwpViewerType } from '@rhwp/core';
 
 export type PageChangeCallback = (current: number, total: number) => void;
 export type ZoomChangeCallback = (scale: number) => void;
+export type ViewMode = 'fit-page' | 'fit-width' | 'fit-height';
 
 // ── SVG 새니타이저 ──────────────────────────────────────────────────
 //
@@ -165,6 +166,7 @@ export class RhwpViewer {
   private currentPage  = 0;
   private scale        = 1.0;
   private translateX   = 0;
+  private viewMode: ViewMode = 'fit-page';
   private initialized  = false;
   private transitioning = false;
 
@@ -327,11 +329,9 @@ export class RhwpViewer {
     this.container.scrollTop = 0;
     this.onZoomChange?.(this.scale);
 
-    const svgEl = wrapper.querySelector('svg');
+    const svgEl = wrapper.querySelector<SVGSVGElement>('svg');
     if (svgEl) {
-      svgEl.style.maxWidth = '100%';
-      svgEl.style.height   = 'auto';
-      svgEl.style.display  = 'block';
+      this.applySvgSizing(svgEl);
       this.applyTransform(svgEl);
     }
   }
@@ -517,8 +517,95 @@ export class RhwpViewer {
   getCurrentPage(): number   { return this.currentPage; }
   isInitialized(): boolean   { return this.initialized; }
   isTransitioning(): boolean { return this.transitioning; }
+  getViewMode(): ViewMode    { return this.viewMode; }
+
+  // ── 뷰 모드 ────────────────────────────────────────────────
+
+  setViewMode(mode: ViewMode): void {
+    this.viewMode = mode;
+    const svgEl = this.container.querySelector<SVGSVGElement>('svg');
+    if (!svgEl) return;
+
+    this.scale = ZOOM_IDENTITY;
+    this.translateX = 0;
+    this.container.scrollTop = 0;
+    const wrapper = this.container.querySelector<HTMLElement>('.page-wrapper');
+    if (wrapper) wrapper.style.minHeight = '';
+
+    this.applySvgSizing(svgEl);
+    this.applyTransform(svgEl);
+    this.onZoomChange?.(this.scale);
+  }
+
+  // ── 스크롤 헬퍼 ────────────────────────────────────────────
+
+  /** touch-action:none 환경에서 touchmove 델타로 수직 스크롤 */
+  scrollBy(dy: number): void {
+    this.container.scrollTop = Math.max(0, this.container.scrollTop - dy);
+  }
+
+  isAtScrollTop(): boolean {
+    return this.container.scrollTop <= 5;
+  }
+
+  isAtScrollBottom(): boolean {
+    const { scrollTop, scrollHeight, clientHeight } = this.container;
+    return scrollTop >= scrollHeight - clientHeight - 5;
+  }
+
+  scrollToTop(): void {
+    this.container.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  scrollToBottom(): void {
+    this.container.scrollTo({ top: this.container.scrollHeight, behavior: 'smooth' });
+  }
 
   // ── private ───────────────────────────────────────────────
+
+  /** 현재 뷰 모드에 따라 SVG 크기를 설정한다. */
+  private applySvgSizing(svgEl: SVGSVGElement): void {
+    svgEl.style.display  = 'block';
+    svgEl.style.maxWidth = '';
+    svgEl.style.maxHeight = '';
+    svgEl.style.width    = '';
+    svgEl.style.height   = '';
+
+    switch (this.viewMode) {
+      case 'fit-width':
+        // 너비를 컨테이너에 꽉 채움. 세로는 비율대로 늘어남 (스크롤로 탐색)
+        svgEl.style.maxWidth = '100%';
+        svgEl.style.width    = '100%';
+        svgEl.style.height   = 'auto';
+        break;
+
+      case 'fit-height': {
+        // 높이를 뷰포트에 딱 맞춤. 너비는 비율대로 (가로 좁은 문서는 중앙 정렬)
+        const h = this.getContentAreaHeight();
+        svgEl.style.height   = h > 0 ? `${h}px` : 'auto';
+        svgEl.style.width    = 'auto';
+        svgEl.style.maxWidth = 'none';
+        break;
+      }
+
+      case 'fit-page':
+      default:
+        // 너비/높이 양쪽 제약 중 더 강한 쪽을 따름 → 전체 페이지가 화면 안에 들어옴
+        svgEl.style.maxWidth  = '100%';
+        svgEl.style.maxHeight = `${this.getContentAreaHeight()}px`;
+        svgEl.style.width     = 'auto';
+        svgEl.style.height    = 'auto';
+        break;
+    }
+  }
+
+  /** padding-top/bottom을 제외한 컨테이너의 실제 콘텐츠 영역 높이(px) */
+  private getContentAreaHeight(): number {
+    const style = getComputedStyle(this.container);
+    const pt    = parseFloat(style.paddingTop)    || 0;
+    const pb    = parseFloat(style.paddingBottom) || 0;
+    return Math.max(0, this.container.clientHeight - pt - pb);
+  }
 
   private applyTransform(el: Element): void {
     (el as HTMLElement).style.transform =

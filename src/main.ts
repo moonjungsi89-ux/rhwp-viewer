@@ -1,5 +1,5 @@
 import './styles/main.css';
-import { RhwpViewer } from './viewer';
+import { RhwpViewer, type ViewMode } from './viewer';
 import { UIController } from './ui';
 import { FileHandler } from './file-handler';
 import { RecentFileStorage } from './storage';
@@ -125,6 +125,28 @@ tapMenu.addEventListener('click', (e) => {
   if (e.target === tapMenu) hideTapMenu();
 });
 
+// ── 화면 보기 모드 ────────────────────────────────────────
+
+const VIEW_MODE_IDS: Record<string, ViewMode> = {
+  'tap-menu-fit-page':   'fit-page',
+  'tap-menu-fit-width':  'fit-width',
+  'tap-menu-fit-height': 'fit-height',
+};
+
+function updateViewModeButtons(active: ViewMode): void {
+  for (const [id, mode] of Object.entries(VIEW_MODE_IDS)) {
+    getEl(id).setAttribute('aria-pressed', String(mode === active));
+  }
+}
+
+for (const [id, mode] of Object.entries(VIEW_MODE_IDS)) {
+  getEl(id).addEventListener('click', () => {
+    hideTapMenu();
+    viewer.setViewMode(mode);
+    updateViewModeButtons(mode);
+  });
+}
+
 // ── 탭 존 힌트 ───────────────────────────────────────
 const TAP_HINT_KEY = 'rhwp-tap-hint-shown';
 
@@ -154,6 +176,7 @@ const touch = new TouchHandler(viewerContainer, {
   onPinchChange: (scale, cx, cy) => viewer.setZoom(scale, cx, cy),
   onPinchEnd:    (scale, cx, cy) => viewer.setZoom(scale, cx, cy),
   onPan:         (dx, dy) => viewer.pan(dx, dy),
+  onScroll:      (dy)       => viewer.scrollBy(dy),
 });
 
 touch.setBoundaryCheckers(
@@ -165,9 +188,25 @@ touch.setTransitionChecker(() => viewer.isTransitioning());
 touch.attach();
 
 function handleTapZone(clientX: number): void {
-  // 탭 메뉴가 열려 있으면 닫기만
   if (!tapMenu.hidden) { hideTapMenu(); return; }
   const w = window.innerWidth;
+
+  // 가로 채움 모드(fit-width)에서 줌이 1배일 때:
+  // 좌탭 = 상단으로 (상단이면 이전 페이지), 우탭 = 하단으로 (하단이면 다음 페이지)
+  if (viewer.getViewMode() === 'fit-width' && viewer.getZoom() <= 1.0) {
+    if (clientX < w / 3) {
+      if (viewer.isAtScrollTop()) viewer.prevPage();
+      else viewer.scrollToTop();
+    } else if (clientX > (w * 2) / 3) {
+      if (viewer.isAtScrollBottom()) viewer.nextPage();
+      else viewer.scrollToBottom();
+    } else {
+      showTapMenu();
+    }
+    return;
+  }
+
+  // 기본: 좌=이전 페이지, 중=메뉴, 우=다음 페이지
   if (clientX < w / 3) {
     viewer.prevPage();
   } else if (clientX > (w * 2) / 3) {

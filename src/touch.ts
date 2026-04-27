@@ -6,6 +6,8 @@ export type GestureCallbacks = {
   onPinchChange:  (scale: number, cx: number, cy: number) => void;
   onPinchEnd:     (finalScale: number, cx: number, cy: number) => void;
   onPan:          (dx: number, dy: number) => void;
+  // touch-action:none 환경에서 브라우저 네이티브 스크롤 대신 직접 호출
+  onScroll?:      (dy: number) => void;
 };
 
 // ── 상수 ──────────────────────────────────────────────────────────
@@ -214,8 +216,14 @@ export class TouchHandler {
       this.state = Math.abs(dx) >= Math.abs(dy) ? 'swiping' : 'scrolling';
     }
 
-    // 세로 스크롤: 브라우저에 위임 (preventDefault 미호출)
-    if (this.state === 'scrolling') return;
+    // 세로 스크롤: touch-action:none이므로 브라우저가 처리 불가 → 직접 처리
+    if (this.state === 'scrolling') {
+      const t  = e.touches[0];
+      const dy = t.clientY - this.prevY;
+      this.prevY = t.clientY;
+      this.callbacks.onScroll?.(dy);
+      return;
+    }
 
     if (this.state === 'swiping') {
       e.preventDefault(); // 가로 스와이프 확정 → 브라우저 스크롤 차단
