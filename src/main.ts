@@ -297,6 +297,8 @@ function showPageJumpSheet(total: number, onGo: (page: number) => void): void {
   sheet.appendChild(actions);
   backdrop.appendChild(sheet);
 
+  const close = () => backdrop.remove();
+
   const commit = () => {
     const n = parseInt(input.value, 10);
     if (!isNaN(n) && n >= 1 && n <= safeTotal) {
