@@ -75,6 +75,11 @@ export class UIController {
     this.loadingOverlay.hidden = false;
   }
 
+  setLoadingProgress(progress: number): void {
+    this.loadingBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    this.loadingProgress.hidden = false;
+  }
+
   hideLoading(): void {
     this.loadingOverlay.hidden = true;
     this.loadingProgress.hidden = true;

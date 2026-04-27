@@ -13,6 +13,20 @@ function getEl(id: string): HTMLElement {
   return el;
 }
 
+/** progress를 start→end까지 durationMs 동안 서서히 증가시킨다. 반환값로 취소 가능. */
+function animateProgress(start: number, end: number, durationMs: number): () => void {
+  const STEPS = 40;
+  const stepMs = durationMs / STEPS;
+  const delta = (end - start) / STEPS;
+  let current = start;
+  const id = setInterval(() => {
+    current += delta;
+    if (current >= end) { clearInterval(id); return; }
+    ui.setLoadingProgress(Math.round(current));
+  }, stepMs);
+  return () => clearInterval(id);
+}
+
 const ui = new UIController();
 
 // onPageChange 콜백으로 페이지 UI 동기화 (prevPage/nextPage가 async이므로)
@@ -31,7 +45,10 @@ const fileHandler = new FileHandler(
     ui.showLoading('WASM 엔진 초기화 중...', 15);
     try {
       if (!viewer.isInitialized()) {
+        // WASM 다운로드·컴파일은 수 초가 걸릴 수 있으므로 진행 바를 서서히 증가
+        const cancelAnim = animateProgress(15, 45, 6000);
         await viewer.init();
+        cancelAnim();
       }
       ui.showLoading('문서를 분석하는 중...', 50);
       await viewer.loadFile(buffer);
@@ -261,6 +278,9 @@ window.addEventListener('offline', syncOnlineStatus);
 // ── 초기 실행 ─────────────────────────────────────
 
 async function bootstrap() {
+  // JS 로드 전 표시된 인라인 스피너 제거
+  document.getElementById('app-loading')?.remove();
+
   await storage.init();
   fileHandler.attachInputHandler();
   // home-screen 전체에서 드래그 수신, drop-zone만 하이라이트
