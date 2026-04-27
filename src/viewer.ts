@@ -515,13 +515,23 @@ export class RhwpViewer {
   }
 
   private clampTranslate(): void {
-    const svgEl = this.container.querySelector<HTMLElement>('svg');
+    const svgEl = this.container.querySelector<SVGSVGElement>('svg');
     if (!svgEl || this.scale <= ZOOM_IDENTITY) return;
 
     const areaW = this.container.clientWidth;
     const areaH = this.container.clientHeight;
-    const svgW  = svgEl.clientWidth;
-    const svgH  = svgEl.clientHeight;
+
+    // clientWidth/clientHeight가 0을 반환하는 브라우저(Samsung Internet 등)는
+    // SVG viewBox 속성으로 고유 비율을 계산해 대체한다.
+    let svgW = svgEl.clientWidth;
+    let svgH = svgEl.clientHeight;
+    if (svgW === 0 || svgH === 0) {
+      const vb = svgEl.viewBox?.baseVal;
+      if (vb && vb.width > 0) {
+        svgW = svgW || areaW;
+        svgH = svgH || (svgW * vb.height / vb.width);
+      }
+    }
 
     const maxX = Math.max(0, (svgW * this.scale - areaW) / 2);
     const maxY = Math.max(0, (svgH * this.scale - areaH) / 2);

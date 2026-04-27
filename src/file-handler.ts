@@ -23,19 +23,6 @@ export class FileHandler {
    * showOpenFilePicker (Chrome 86+, Android "내 파일" 직접 열림) 우선,
    * 미지원 브라우저(Samsung Internet, Firefox, Safari)는 input.click() 폴백. */
   openFilePicker(): void {
-    if ('showOpenFilePicker' in window) {
-      (window as Window & { showOpenFilePicker: Function }).showOpenFilePicker({ multiple: false })
-        .then((handles: FileSystemFileHandle[]) => handles[0].getFile())
-        .then((file: File) => this.processFile(file))
-        .catch((err: unknown) => {
-          // AbortError = 사용자가 직접 취소 → 무시
-          // 그 외 오류(설정 문제·권한 등) → input.click() 폴백
-          if (err instanceof Error && err.name !== 'AbortError') {
-            this.fileInput.click();
-          }
-        });
-      return;
-    }
     this.fileInput.click();
   }
 
