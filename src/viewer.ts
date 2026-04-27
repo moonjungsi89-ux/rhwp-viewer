@@ -165,7 +165,6 @@ export class RhwpViewer {
   private currentPage  = 0;
   private scale        = 1.0;
   private translateX   = 0;
-  private translateY   = 0;
   private initialized  = false;
   private transitioning = false;
 
@@ -219,9 +218,9 @@ export class RhwpViewer {
     this.currentPage  = 0;
     this.scale        = ZOOM_IDENTITY;
     this.translateX   = 0;
-    this.translateY   = 0;
     this.transitioning = false;
     this.svgCache.clear(); // 새 문서 로드 시 이전 캐시 전체 폐기
+    this.container.scrollTop = 0;
   }
 
   // ── 렌더링 ───────────────────────────────────────────────
@@ -257,7 +256,9 @@ export class RhwpViewer {
         if (svgString === '') {
           // 새니타이즈 실패: 오류 카드를 직접 삽입
           wrapper.innerHTML = RhwpViewer.RENDER_ERROR_HTML;
-          this.scale = ZOOM_IDENTITY; this.translateX = 0; this.translateY = 0;
+          wrapper.style.minHeight = '';
+          this.scale = ZOOM_IDENTITY; this.translateX = 0;
+          this.container.scrollTop = 0;
           this.onZoomChange?.(this.scale);
           this.currentPage = pageIndex;
         }
@@ -304,7 +305,9 @@ export class RhwpViewer {
     } catch {
       // WASM 렌더링 실패 → 인라인 오류 카드 (앱 크래시 방지)
       wrapper.innerHTML = RhwpViewer.RENDER_ERROR_HTML;
-      this.scale = ZOOM_IDENTITY; this.translateX = 0; this.translateY = 0;
+      wrapper.style.minHeight = '';
+      this.scale = ZOOM_IDENTITY; this.translateX = 0;
+      this.container.scrollTop = 0;
       this.onZoomChange?.(this.scale);
       this.currentPage = pageIndex;
       return null;
@@ -320,7 +323,8 @@ export class RhwpViewer {
 
     this.scale      = ZOOM_IDENTITY;
     this.translateX = 0;
-    this.translateY = 0;
+    wrapper.style.minHeight = '';
+    this.container.scrollTop = 0;
     this.onZoomChange?.(this.scale);
 
     const svgEl = wrapper.querySelector('svg');
@@ -442,24 +446,30 @@ export class RhwpViewer {
   // ── 줌 ───────────────────────────────────────────────────
 
   setZoom(scale: number, viewportCX?: number, viewportCY?: number): void {
+    const prev  = this.scale;
     const next  = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, scale));
-    const ratio = next / this.scale;
+    const ratio = next / prev;
+
+    this.scale = next;
+    // wrapper 높이를 먼저 확장해야 scrollTop을 유효 범위 내에서 설정 가능
+    this.updateWrapperHeight();
 
     if (viewportCX !== undefined && viewportCY !== undefined && ratio !== 1) {
       const rect  = this.container.getBoundingClientRect();
-      const relCX = viewportCX - (rect.left + rect.width  / 2);
-      const relCY = viewportCY - (rect.top  + rect.height / 2);
+      // X: transform 기반 (수평 중앙 고정점)
+      const relCX = viewportCX - (rect.left + rect.width / 2);
       this.translateX = relCX * (1 - ratio) + ratio * this.translateX;
-      this.translateY = relCY * (1 - ratio) + ratio * this.translateY;
+      // Y: scrollTop 기반 (핀치 중심점 고정)
+      const focalY   = viewportCY - rect.top;
+      const newScroll = (this.container.scrollTop + focalY) * ratio - focalY;
+      this.container.scrollTop = Math.max(0, newScroll);
     }
-
-    this.scale = next;
 
     if (next <= ZOOM_IDENTITY) {
       this.translateX = 0;
-      this.translateY = 0;
+      this.container.scrollTop = 0;
     } else {
-      this.clampTranslate();
+      this.clampTranslateX();
     }
 
     const svgEl = this.container.querySelector('svg');
@@ -492,8 +502,9 @@ export class RhwpViewer {
   pan(dx: number, dy: number): void {
     if (this.scale <= ZOOM_IDENTITY) return;
     this.translateX += dx;
-    this.translateY += dy;
-    this.clampTranslate();
+    this.clampTranslateX();
+    // dy > 0: 손가락 아래로 → 위 내용 보기 → scrollTop 감소
+    this.container.scrollTop = Math.max(0, this.container.scrollTop - dy);
 
     const svgEl = this.container.querySelector('svg');
     if (svgEl) this.applyTransform(svgEl);
@@ -511,33 +522,41 @@ export class RhwpViewer {
 
   private applyTransform(el: Element): void {
     (el as HTMLElement).style.transform =
-      `translate(${this.translateX}px, ${this.translateY}px) scale(${this.scale})`;
+      `translateX(${this.translateX}px) scale(${this.scale})`;
   }
 
-  private clampTranslate(): void {
+  // X축만 clamp: Y축은 container.scrollTop이 처리
+  private clampTranslateX(): void {
     const svgEl = this.container.querySelector<SVGSVGElement>('svg');
     if (!svgEl || this.scale <= ZOOM_IDENTITY) return;
 
-    const areaW = this.container.clientWidth;
-    const areaH = this.container.clientHeight;
+    // clientWidth가 0인 경우 컨테이너 너비로 대체 (SVG는 max-width:100% 이므로 동일)
+    const svgW = svgEl.clientWidth || this.container.clientWidth;
+    const maxX = Math.max(0, (svgW * this.scale - this.container.clientWidth) / 2);
+    this.translateX = Math.max(-maxX, Math.min(maxX, this.translateX));
+  }
 
-    // clientWidth/clientHeight가 0을 반환하는 브라우저(Samsung Internet 등)는
-    // SVG viewBox 속성으로 고유 비율을 계산해 대체한다.
-    let svgW = svgEl.clientWidth;
-    let svgH = svgEl.clientHeight;
-    if (svgW === 0 || svgH === 0) {
+  // 확대 시 page-wrapper의 minHeight를 SVG 시각 높이로 확장.
+  // overflow-y:auto 컨테이너가 이 영역을 스크롤할 수 있게 된다.
+  private updateWrapperHeight(): void {
+    const wrapper = this.container.querySelector<HTMLElement>('.page-wrapper');
+    if (!wrapper) return;
+    if (this.scale <= ZOOM_IDENTITY) {
+      wrapper.style.minHeight = '';
+      return;
+    }
+    const svgEl = this.container.querySelector<SVGSVGElement>('svg');
+    let svgH = svgEl?.clientHeight ?? 0;
+    if (svgH === 0 && svgEl) {
       const vb = svgEl.viewBox?.baseVal;
       if (vb && vb.width > 0) {
-        svgW = svgW || areaW;
-        svgH = svgH || (svgW * vb.height / vb.width);
+        const svgW = svgEl.clientWidth || this.container.clientWidth;
+        svgH = svgW * vb.height / vb.width;
       }
     }
-
-    const maxX = Math.max(0, (svgW * this.scale - areaW) / 2);
-    const maxY = Math.max(0, (svgH * this.scale - areaH) / 2);
-
-    this.translateX = Math.max(-maxX, Math.min(maxX, this.translateX));
-    this.translateY = Math.max(-maxY, Math.min(maxY, this.translateY));
+    if (svgH > 0) {
+      wrapper.style.minHeight = `${Math.ceil(svgH * this.scale)}px`;
+    }
   }
 }
 
