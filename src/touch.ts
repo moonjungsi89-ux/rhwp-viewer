@@ -86,6 +86,7 @@ export class TouchHandler {
   }
 
   attach(): void {
+    this.detach(); // prevent double-binding if called twice
     // touchstart: passive OK (스크롤 차단 필요 없음)
     this.el.addEventListener('touchstart', this._onStart, { passive: true });
     // touchmove: passive:false 필수 — swiping/pinching/panning 시 e.preventDefault() 호출

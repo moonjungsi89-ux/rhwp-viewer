@@ -1095,3 +1095,149 @@ html, body {
   from { transform: translateY(40px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
+
+/* ════════════════════════════════════════
+   검색 바
+   ════════════════════════════════════════ */
+.search-bar {
+  position: absolute;
+  top: calc(var(--toolbar-height) + var(--safe-top));
+  left: 0;
+  right: 0;
+  height: 48px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* 검색 바가 열릴 때 뷰어 컨테이너 패딩 추가 */
+#viewer-screen.search-open .viewer-container {
+  padding-top: calc(var(--toolbar-height) + var(--safe-top) + 48px);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--color-text);
+  background: var(--color-bg-secondary);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  outline: none;
+  -webkit-appearance: none;
+  transition: border-color 0.12s;
+}
+
+.search-input:focus {
+  border-color: var(--color-primary);
+}
+
+.search-count {
+  font-size: 12px;
+  color: var(--color-text-hint);
+  white-space: nowrap;
+  min-width: 52px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.search-nav-btn {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s;
+}
+
+.search-nav-btn:hover:not(:disabled) { background: var(--color-bg-tertiary); }
+.search-nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+.search-close-btn {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--color-text-hint);
+  cursor: pointer;
+  border-radius: 50%;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s;
+}
+
+.search-close-btn:hover { background: var(--color-bg-tertiary); }
+
+/* ════════════════════════════════════════
+   텍스트 선택 모드
+   ════════════════════════════════════════ */
+
+/* SVG 텍스트 선택 활성화 */
+#viewer-screen.text-select-mode .viewer-container svg {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+/* touch-action 복원: 브라우저가 스크롤·롱프레스 텍스트 선택 처리 가능하도록 */
+#viewer-screen.text-select-mode .viewer-container {
+  touch-action: auto;
+  cursor: text;
+}
+
+/* 안내 바 */
+.text-select-bar {
+  position: absolute;
+  bottom: calc(var(--nav-height) + var(--safe-bottom) + 12px);
+  left: 12px;
+  right: 12px;
+  max-width: 480px;
+  margin: 0 auto;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #323232;
+  color: #fff;
+  font-size: 13px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  animation: slide-up 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.text-select-label {
+  font-weight: 500;
+}
+
+.text-select-done {
+  padding: 6px 16px;
+  min-height: 32px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}

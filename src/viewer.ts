@@ -65,13 +65,15 @@ const ALLOWED_SVG_ATTRS = new Set([
   'xmlns','xmlns:xlink',
 ]);
 
-/** javascript: / data: / vbscript: 스킴 차단 */
-function isDangerousUrl(value: string): boolean {
-  const lower = value.trim().toLowerCase().replace(/[\u0000-\u001f\u007f]+/g, '');
-  return lower.startsWith('javascript:')
-      || lower.startsWith('vbscript:')
-      || lower.startsWith('data:text')
-      || lower.startsWith('data:application');
+/**
+ * href / xlink:href 값이 안전한 fragment 참조인지 검사.
+ * <use> 와 <image> 는 문서 내 리소스를 '#id' 형태로만 참조해야 하므로
+ * 그 외 모든 값(data: URI, http:, javascript: 등)은 제거한다.
+ * 블록리스트 대신 화이트리스트: 새 스킴도 자동 차단.
+ */
+function isSafeHref(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed === '' || trimmed.startsWith('#');
 }
 
 /**
@@ -103,18 +105,21 @@ function sanitizeNode(node: Node): void {
             el.removeAttribute(name);
             continue;
           }
-          // href / xlink:href 값이 위험하면 제거
+          // href / xlink:href: fragment('#id') 또는 빈 문자열만 허용 (VULN-008)
           if (lower === 'href' || lower === 'xlink:href') {
             const val = el.getAttribute(name) ?? '';
-            if (isDangerousUrl(val)) el.removeAttribute(name);
+            if (!isSafeHref(val)) el.removeAttribute(name);
           }
         }
-        // style 속성 내 expression() / url(javascript:) 제거
+        // style 속성 내 위험 패턴 제거 (VULN-009)
+        // expression(), javascript:, vbscript: 외에 url(data:) / url(http:) 도 차단
         if (el.hasAttribute('style')) {
           const safe = (el.getAttribute('style') ?? '')
             .replace(/expression\s*\(/gi, '')
             .replace(/javascript\s*:/gi, '')
-            .replace(/vbscript\s*:/gi, '');
+            .replace(/vbscript\s*:/gi, '')
+            .replace(/url\s*\(\s*['"]?\s*data\s*:/gi, 'url(invalid:')
+            .replace(/url\s*\(\s*['"]?\s*https?:/gi, 'url(invalid:');
           el.setAttribute('style', safe);
         }
         sanitizeNode(child);
@@ -157,7 +162,7 @@ const ZOOM_MIN             = 0.5;
 const ZOOM_MAX             = 3.0;
 const ZOOM_ANIMATED_EASING = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
 const ZOOM_ANIMATED_MS     = 300;
-const SVG_CACHE_MAX        = 10; // 최대 캐시 페이지 수 (메모리 상한)
+const SVG_CACHE_MAX        = 30; // 최대 캐시 페이지 수 (메모리 상한)
 
 export class RhwpViewer {
   private container: HTMLElement;
@@ -172,6 +177,7 @@ export class RhwpViewer {
 
   private onPageChange: PageChangeCallback | null = null;
   private onZoomChange: ZoomChangeCallback | null = null;
+  private onViewModeChange: (() => void) | null = null;
 
   // SVG 문자열 캐시: 렌더링된 페이지를 보관해 재방문 시 WASM 호출 생략
   private svgCache = new Map<number, string>();
@@ -184,6 +190,8 @@ export class RhwpViewer {
   setOnZoomChange(cb: ZoomChangeCallback): void {
     this.onZoomChange = cb;
   }
+
+  setOnViewModeChange(cb: () => void): void { this.onViewModeChange = cb; }
 
   // ── 초기화 ────────────────────────────────────────────────
 
@@ -292,7 +300,12 @@ export class RhwpViewer {
     wrapper: HTMLElement,
   ): Promise<string | null> {
     const cached = this.svgCache.get(pageIndex);
-    if (cached) return cached;
+    if (cached) {
+      // Re-insert as MRU so Map iteration order reflects recency (true LRU)
+      this.svgCache.delete(pageIndex);
+      this.svgCache.set(pageIndex, cached);
+      return cached;
+    }
 
     // 캐시 미스: 스켈레톤 표시 후 rAF로 한 프레임 양보 → WASM 렌더 중 사용자가 볼 수 있음
     wrapper.innerHTML = RhwpViewer.SKELETON_HTML;
@@ -365,21 +378,28 @@ export class RhwpViewer {
     );
     if (targets.length === 0) return;
 
-    const doFetch = () => {
-      for (const p of targets) {
-        if (!this.hwpViewer || this.svgCache.has(p)) continue;
+    // 페이지 하나씩 별도 콜백으로 처리 — 한 콜백에서 여러 페이지를 렌더링하면
+    // WASM 실행이 메인 스레드를 길게 점유해 제스처·애니메이션을 차단.
+    const doOne = (i: number) => {
+      if (i >= targets.length || !this.hwpViewer) return;
+      const p = targets[i];
+      if (!this.svgCache.has(p)) {
         try {
-          const raw  = this.hwpViewer.renderPageSvg(p);
-          const safe = sanitizeSvg(raw);
+          const safe = sanitizeSvg(this.hwpViewer.renderPageSvg(p));
           if (safe) this.cacheSet(p, safe);
         } catch { /* 프리렌더 실패는 무시 — 실제 이동 시 재시도 */ }
+      }
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => doOne(i + 1), { timeout: 2000 });
+      } else {
+        setTimeout(() => doOne(i + 1), 200);
       }
     };
 
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(doFetch, { timeout: 1500 });
+      requestIdleCallback(() => doOne(0), { timeout: 2000 });
     } else {
-      setTimeout(doFetch, 150);
+      setTimeout(() => doOne(0), 200);
     }
   }
 
@@ -535,6 +555,7 @@ export class RhwpViewer {
     this.applySvgSizing(svgEl);
     this.applyTransform(svgEl);
     this.onZoomChange?.(this.scale);
+    this.onViewModeChange?.();
   }
 
   // ── 스크롤 헬퍼 ────────────────────────────────────────────

@@ -103,10 +103,10 @@ export class FileHandler {
     if (!location.search.includes('share=1')) return;
 
     // 뒤로가기·새로고침 시 재실행 방지
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', import.meta.env.BASE_URL);
 
     try {
-      const response = await fetch('/_share-pending');
+      const response = await fetch(`${import.meta.env.BASE_URL}_share-pending`);
       if (!response.ok) return;
 
       // x-filename은 SW가 encodeURIComponent()로 인코딩해 저장한 값.
@@ -138,7 +138,7 @@ export class FileHandler {
     const url = new URLSearchParams(location.search).get('url');
     if (!url) return;
 
-    window.history.replaceState({}, '', '/');
+    window.history.replaceState({}, '', import.meta.env.BASE_URL);
 
     // 보안: http/https 외 스키마(file://, data:, ftp:// 등) 차단 — SSRF 방지
     let parsed: URL;

@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <!-- user-scalable=no 및 maximum-scale=1.0 제거: WCAG 1.4.4 Resize Text — 브라우저 확대를 차단하면 저시력 사용자 접근성 위반.
          뷰어 내 핀치 줌은 JS Touch API가 처리하므로 뷰포트 잠금 불필요. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="설치 없이 HWP 파일을 열어보세요" />
     <meta property="og:title" content="알뷰어 — HWP 뷰어" />
     <meta property="og:description" content="설치 없이 HWP 파일을 열어보세요" />
     <meta property="og:type" content="website" />
     <meta name="theme-color" content="#1a73e8" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="알뷰어" />
     <!-- Security headers via meta where HTTP headers are unavailable (static hosts).
          'unsafe-inline' for style-src is required by the SVG transform applied via
@@ -28,7 +28,7 @@
                    style-src 'self' 'unsafe-inline';
                    img-src 'self' data: blob:;
                    font-src 'self';
-                   connect-src 'self' https: http:;
+                   connect-src 'self' https:;
                    worker-src 'self';
                    child-src 'none';
                    object-src 'none';
@@ -129,6 +129,27 @@
 
       <!-- ── 뷰어 화면 ── -->
       <div id="viewer-screen" hidden>
+        <!-- 검색 바 (Ctrl+F 또는 메뉴 > 찾기) -->
+        <div id="search-bar" class="search-bar" hidden role="search" aria-label="문서 내 찾기">
+          <input id="search-input" class="search-input" type="search" placeholder="이 페이지에서 찾기..." autocomplete="off" aria-label="검색어 입력" />
+          <span id="search-count" class="search-count" aria-live="polite"></span>
+          <button id="search-prev-btn" class="search-nav-btn" type="button" aria-label="이전 결과" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M18 15l-6-6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button id="search-next-btn" class="search-nav-btn" type="button" aria-label="다음 결과" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button id="search-close-btn" class="search-close-btn" type="button" aria-label="찾기 닫기">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
         <header id="toolbar" class="toolbar">
           <button id="back-btn" class="toolbar-btn" type="button" aria-label="홈으로 돌아가기">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -161,7 +182,16 @@
             <button id="tap-menu-fit-width"  class="tap-menu-view-btn" type="button" aria-pressed="false">가로 채움</button>
             <button id="tap-menu-fit-height" class="tap-menu-view-btn" type="button" aria-pressed="false">세로 채움</button>
           </div>
+          <div class="tap-menu-divider" aria-hidden="true"></div>
+          <button id="tap-menu-find" class="tap-menu-btn" type="button">찾기</button>
+          <button id="tap-menu-text-select" class="tap-menu-btn" type="button">텍스트 선택</button>
           <button id="tap-menu-close" class="tap-menu-btn tap-menu-btn--close" type="button">메뉴 끄기</button>
+        </div>
+
+        <!-- 텍스트 선택 모드 안내 바 -->
+        <div id="text-select-bar" class="text-select-bar" hidden role="status">
+          <span class="text-select-label">텍스트 선택 모드</span>
+          <button id="text-select-done-btn" class="text-select-done" type="button">완료</button>
         </div>
 
         <!-- 첫 실행 힌트 오버레이 -->

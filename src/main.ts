@@ -34,6 +34,11 @@ const viewer = new RhwpViewer(
   getEl('viewer-container'),
   (current, total) => {
     ui.updatePageInfo(current, total);
+    // 페이지 전환 시 SVG가 교체되므로 하이라이트 레이어 참조와 이전 결과를 초기화하고 재검색
+    searchHighlightLayer = null;
+    searchMatches = [];
+    searchCurrentIdx = -1;
+    if (searchQuery.trim()) runSearch(searchQuery);
   }
 );
 
@@ -59,9 +64,10 @@ const fileHandler = new FileHandler(
       await viewer.renderPage(0, false);
       void storage.addRecentFile({ name: file.name, size: file.size });
     } catch (err) {
-      const detail = err instanceof Error
+      // 프로덕션 빌드에서는 스택 트레이스를 사용자에게 노출하지 않음 (VULN-011)
+      const detail = (import.meta.env.DEV && err instanceof Error)
         ? (err.stack ?? err.message)
-        : String(err);
+        : undefined;
 
       // WASM 초기화 실패 여부로 오류 메시지 분기
       if (!viewer.isInitialized()) {
@@ -96,6 +102,189 @@ getEl('back-btn').addEventListener('click', (e) => {
   ui.showHome();
 });
 
+// ── 검색 상태 ──────────────────────────────────────────
+let searchQuery       = '';
+let searchMatches: SVGGraphicsElement[] = [];
+let searchCurrentIdx  = -1;
+let searchHighlightLayer: SVGGElement | null = null;
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function openSearch(): void {
+  hideTapMenu();
+  getEl('search-bar').hidden = false;
+  getEl('viewer-screen').classList.add('search-open');
+  const input = getEl('search-input') as HTMLInputElement;
+  input.focus();
+  input.select();
+}
+
+function closeSearch(): void {
+  if (searchDebounceTimer !== null) { clearTimeout(searchDebounceTimer); searchDebounceTimer = null; }
+  getEl('search-bar').hidden = true;
+  getEl('viewer-screen').classList.remove('search-open');
+  clearSearchHighlights();
+  (getEl('search-input') as HTMLInputElement).value = '';
+  searchQuery = '';
+  searchMatches = [];
+  searchCurrentIdx = -1;
+  (getEl('search-count') as HTMLSpanElement).textContent = '';
+  (getEl('search-prev-btn') as HTMLButtonElement).disabled = true;
+  (getEl('search-next-btn') as HTMLButtonElement).disabled = true;
+}
+
+function clearSearchHighlights(): void {
+  if (searchHighlightLayer?.isConnected) searchHighlightLayer.remove();
+  searchHighlightLayer = null;
+}
+
+function runSearch(query: string): void {
+  clearSearchHighlights();
+  searchQuery = query;
+  searchMatches = [];
+  searchCurrentIdx = -1;
+
+  const countEl  = getEl('search-count')    as HTMLSpanElement;
+  const prevBtn  = getEl('search-prev-btn') as HTMLButtonElement;
+  const nextBtn  = getEl('search-next-btn') as HTMLButtonElement;
+
+  if (!query.trim()) {
+    countEl.textContent = '';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  const svgEl = viewerContainer.querySelector<SVGSVGElement>('svg');
+  if (!svgEl) {
+    countEl.textContent = '이 페이지에 없음';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  const lowerQuery = query.toLowerCase();
+  const matches: SVGGraphicsElement[] = [];
+
+  // tspan 리프(직접 텍스트 노드 포함) 우선 매칭 — 더 정밀한 하이라이트 영역
+  for (const el of svgEl.querySelectorAll<SVGGraphicsElement>('tspan')) {
+    const directText = Array.from(el.childNodes)
+      .filter(n => n.nodeType === Node.TEXT_NODE)
+      .map(n => n.textContent ?? '')
+      .join('');
+    if (directText.toLowerCase().includes(lowerQuery)) matches.push(el);
+  }
+
+  // tspan 결과 없으면 text 요소 전체 textContent로 재시도 (tspan 경계를 넘는 검색어 포함)
+  if (matches.length === 0) {
+    for (const el of svgEl.querySelectorAll<SVGGraphicsElement>('text')) {
+      if ((el.textContent ?? '').toLowerCase().includes(lowerQuery)) matches.push(el);
+    }
+  }
+
+  searchMatches = matches;
+
+  if (matches.length === 0) {
+    countEl.textContent = '이 페이지에 없음';
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    return;
+  }
+
+  // SVG 내 하이라이트 레이어 — defs/style/symbol 등 비렌더링 노드 뒤, 첫 렌더링 요소 앞에 삽입
+  const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  layer.setAttribute('pointer-events', 'none');
+  const NON_RENDERED = new Set(['defs','style','symbol','clipPath','mask','filter','marker','linearGradient','radialGradient','pattern']);
+  let refNode: ChildNode | null = svgEl.firstChild;
+  while (refNode && refNode.nodeType === Node.ELEMENT_NODE
+         && NON_RENDERED.has((refNode as Element).tagName.toLowerCase())) {
+    refNode = refNode.nextSibling;
+  }
+  svgEl.insertBefore(layer, refNode);
+  searchHighlightLayer = layer;
+
+  for (let i = 0; i < matches.length; i++) {
+    try {
+      const box = matches[i].getBBox();
+      if (box.width === 0 && box.height === 0) continue;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', String(box.x - 2));
+      rect.setAttribute('y', String(box.y - 1));
+      rect.setAttribute('width',  String(box.width + 4));
+      rect.setAttribute('height', String(box.height + 2));
+      rect.setAttribute('rx', '2');
+      rect.setAttribute('data-match-idx', String(i));
+      layer.appendChild(rect);
+    } catch { /* getBBox 실패 시 해당 항목 건너뜀 */ }
+  }
+
+  searchCurrentIdx = 0;
+  updateSearchUI();
+  scrollToSearchMatch(0);
+}
+
+function updateSearchUI(): void {
+  const countEl = getEl('search-count')    as HTMLSpanElement;
+  const prevBtn = getEl('search-prev-btn') as HTMLButtonElement;
+  const nextBtn = getEl('search-next-btn') as HTMLButtonElement;
+
+  if (searchMatches.length === 0) return;
+
+  countEl.textContent = `${searchCurrentIdx + 1} / ${searchMatches.length}`;
+  prevBtn.disabled = searchMatches.length <= 1;
+  nextBtn.disabled = searchMatches.length <= 1;
+
+  if (searchHighlightLayer) {
+    searchHighlightLayer.querySelectorAll('rect').forEach((rect, i) => {
+      rect.setAttribute('fill',
+        i === searchCurrentIdx
+          ? 'rgba(255, 140, 0, 0.55)'
+          : 'rgba(255, 220, 0, 0.35)',
+      );
+    });
+  }
+}
+
+function scrollToSearchMatch(idx: number): void {
+  if (idx < 0 || idx >= searchMatches.length) return;
+  const el = searchMatches[idx];
+  try {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  } catch { /* 미지원 브라우저 폴백 */ }
+
+  const svgEl = viewerContainer.querySelector<SVGSVGElement>('svg');
+  if (!svgEl) return;
+  try {
+    const box     = el.getBBox();
+    const svgRect = svgEl.getBoundingClientRect();
+    const vb      = svgEl.viewBox?.baseVal;
+    if (!vb || vb.width === 0) return;
+    const scaleY       = svgRect.height / vb.height;
+    const elemScreenCY = svgRect.top + (box.y + box.height / 2) * scaleY;
+    const containerCY  = viewerContainer.getBoundingClientRect().top + viewerContainer.clientHeight / 2;
+    viewerContainer.scrollBy({ top: elemScreenCY - containerCY, behavior: 'smooth' });
+  } catch { /* ignore */ }
+}
+
+// ── 텍스트 선택 모드 ──────────────────────────────────
+let textSelectMode = false;
+
+function enterTextSelectMode(): void {
+  hideTapMenu();
+  textSelectMode = true;
+  getEl('viewer-screen').classList.add('text-select-mode');
+  getEl('text-select-bar').hidden = false;
+  touch.detach();
+}
+
+function exitTextSelectMode(): void {
+  textSelectMode = false;
+  getEl('viewer-screen').classList.remove('text-select-mode');
+  getEl('text-select-bar').hidden = true;
+  touch.attach();
+  try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+}
+
 // ── 탭 존 미니 메뉴 ──────────────────────────────────
 const tapMenu = getEl('tap-menu');
 
@@ -119,6 +308,63 @@ getEl('tap-menu-page-jump').addEventListener('click', () => {
 });
 
 getEl('tap-menu-close').addEventListener('click', hideTapMenu);
+
+getEl('tap-menu-find').addEventListener('click', () => {
+  openSearch();
+});
+
+getEl('tap-menu-text-select').addEventListener('click', () => {
+  enterTextSelectMode();
+});
+
+// ── 검색 바 이벤트 ──────────────────────────────────────
+getEl('search-input').addEventListener('input', (e) => {
+  const query = (e.target as HTMLInputElement).value;
+  if (searchDebounceTimer !== null) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    searchDebounceTimer = null;
+    runSearch(query);
+  }, 200);
+});
+
+getEl('search-input').addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (searchMatches.length === 0) return;
+    searchCurrentIdx = (searchCurrentIdx + 1) % searchMatches.length;
+    updateSearchUI();
+    scrollToSearchMatch(searchCurrentIdx);
+  } else if (e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey)) {
+    e.preventDefault();
+    if (searchMatches.length === 0) return;
+    searchCurrentIdx = (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
+    updateSearchUI();
+    scrollToSearchMatch(searchCurrentIdx);
+  } else if (e.key === 'Escape') {
+    closeSearch();
+  }
+});
+
+// type="search" 의 기본 클리어(×) 버튼은 input 이벤트를 발화시키므로 별도 처리 불필요
+
+getEl('search-prev-btn').addEventListener('click', () => {
+  if (searchMatches.length === 0) return;
+  searchCurrentIdx = (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
+  updateSearchUI();
+  scrollToSearchMatch(searchCurrentIdx);
+});
+
+getEl('search-next-btn').addEventListener('click', () => {
+  if (searchMatches.length === 0) return;
+  searchCurrentIdx = (searchCurrentIdx + 1) % searchMatches.length;
+  updateSearchUI();
+  scrollToSearchMatch(searchCurrentIdx);
+});
+
+getEl('search-close-btn').addEventListener('click', closeSearch);
+
+// ── 텍스트 선택 모드 ─────────────────────────────────────
+getEl('text-select-done-btn').addEventListener('click', exitTextSelectMode);
 
 // 메뉴 외부 탭 → 닫기
 tapMenu.addEventListener('click', (e) => {
@@ -216,20 +462,37 @@ function handleTapZone(clientX: number): void {
   }
 }
 
-// 데스크톱: 마우스 클릭도 탭 존과 동일하게 처리
+// 데스크톱: 마우스 클릭도 탭 존과 동일하게 처리 (텍스트 선택 모드 제외)
 viewerContainer.addEventListener('pointerup', (e) => {
   if (e.pointerType !== 'mouse') return;
+  if (textSelectMode) return;
   handleTapZone(e.clientX);
 });
 
 viewer.setOnZoomChange(s => touch.setCurrentScale(s));
+viewer.setOnViewModeChange(() => { if (searchQuery.trim()) runSearch(searchQuery); });
 
 
 // 키보드 탐색 (데스크톱)
 document.addEventListener('keydown', (e) => {
   if (getEl('viewer-screen').hidden) return;
-  // 입력 중에는 무시
+
+  // Ctrl/Cmd+F: 검색 열기 (입력 중에도 동작)
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    e.preventDefault();
+    openSearch();
+    return;
+  }
+
+  // Escape: 검색 바가 열려 있으면 닫기
+  if (e.key === 'Escape' && !getEl('search-bar').hidden) {
+    closeSearch();
+    return;
+  }
+
+  // 입력 중에는 페이지 탐색 키 무시
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
   switch (e.key) {
     case 'ArrowRight': case 'PageDown': viewer.nextPage(); break;
     case 'ArrowLeft':  case 'PageUp':   viewer.prevPage(); break;
@@ -337,7 +600,7 @@ bootstrap().catch((err) => {
   ui.showError(
     `앱 초기화 실패: ${err instanceof Error ? err.message : String(err)}`,
     undefined,
-    err instanceof Error ? err.stack : undefined,
+    import.meta.env.DEV && err instanceof Error ? err.stack : undefined,
   );
 });
 

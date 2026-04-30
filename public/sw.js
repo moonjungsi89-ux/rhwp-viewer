@@ -200,8 +200,8 @@ async function handleFetch(request) {
 // ── Message: main.ts에서 업데이트 요청 수신 ──────────────────────
 self.addEventListener('message', (event) => {
   // 발신 출처 검증: 동일 출처 클라이언트에서만 skipWaiting 허용.
-  // event.origin이 빈 문자열인 경우(null origin)도 거부.
-  if (event.origin && event.origin !== self.location.origin) return;
+  // event.origin === '' (null origin: data: 프레임, about:blank 등)도 명시적으로 거부.
+  if (event.origin !== self.location.origin) return;
 
   // 사용자가 업데이트 확인 시 main.ts가 'skipWaiting' 전송
   if (event.data === 'skipWaiting') {
